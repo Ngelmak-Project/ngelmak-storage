@@ -1,0 +1,10 @@
+# Ignore VS Code workspace metadata
+.vscode/
+
+# Ignore Docker mounted data volumes
+databases/pgdata/
+databases/redisdata/
+seaweed-storage/data/
+
+# Ignore replication backup documentation
+REPLICATION_BACKUP.md
