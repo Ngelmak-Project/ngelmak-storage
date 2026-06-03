@@ -1,6 +1,3 @@
-<<<<<<< HEAD
-# ngelmak-pgdb
-=======
 # Ngelmak Storage
 
 ## Overview
@@ -81,4 +78,3 @@ SeaweedFS configuration files are located in `seaweed-storage/`.
 - SeaweedFS is used for scalable file storage and object persistence.
 
 For more details, consult the service-specific documentation files in each folder.
->>>>>>> master
