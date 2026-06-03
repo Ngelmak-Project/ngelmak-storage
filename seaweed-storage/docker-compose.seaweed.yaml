@@ -1,0 +1,78 @@
+services:
+  # --- SeaweedFS master ---
+  master:
+    image: chrislusf/seaweedfs:4.31
+    container_name: seaweed-master
+    command: >
+      master
+      -ip=master
+      -port=9333
+      -mdir=/data
+      -peers=none
+      -defaultReplication=000
+      -volumeSizeLimitMB=1024
+    ports:
+      - "9333:9333"
+    volumes:
+      - ./data/master:/data
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:9333/cluster/status"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    restart: on-failure:5
+    networks:
+      - ngelmak-net
+
+  # --- Filer (HTTP API + POSIX-like paths) ---
+  filer:
+    image: chrislusf/seaweedfs:4.31
+    container_name: seaweed-filer
+    command: >
+      filer
+      -master=master:9333
+      -ip=filer
+      -port=8888
+      -defaultReplicaPlacement=000
+      -defaultStoreDir=/data/filer_store
+    depends_on:
+      master:
+        condition: service_healthy
+    ports:
+      - "8888:8888"
+    volumes:
+      - ./data/filer:/data
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8888/?pretty=y"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    restart: on-failure:5
+    networks:
+      - ngelmak-net
+
+  # --- Volume servers (can be spread across nodes) ---
+  volume1:
+    image: chrislusf/seaweedfs:4.31
+    container_name: seaweed-volume1
+    command: >
+      volume
+      -master=master:9333
+      -ip=volume1
+      -ip.bind=volume1
+      -port=8080
+      -dir=/data
+      -max=2
+    depends_on:
+      master:
+        condition: service_healthy
+    ports:
+      - "8081:8080"
+    volumes:
+      - ./data/volume1:/data
+    networks:
+      - ngelmak-net
+
+networks:
+  ngelmak-net:
+    external: true

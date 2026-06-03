@@ -1,0 +1,36 @@
+services:
+  # --- Postgres Database ---
+  ngelmak-pgdb:
+    image: postgres:16
+    container_name: ngelmak-pgdb
+    environment:
+      POSTGRES_USER: admin
+      POSTGRES_PASSWORD: changeme
+      POSTGRES_DB: postgres
+    ports:
+      - "5432:5432"
+    volumes:
+      - ./pgdata:/var/lib/postgresql/data
+    networks:
+      - ngelmak-net
+      
+  # --- Redis Cache ---
+  ngelmak-redis:
+    image: redis:7-alpine
+    container_name: ngelmak-redis
+    ports:
+      - "6379:6379"
+    volumes:
+      - ./redisdata:/data
+    networks:
+      - ngelmak-net
+    command: redis-server --appendonly yes
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+networks:
+  ngelmak-net:
+    external: true

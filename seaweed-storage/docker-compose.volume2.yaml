@@ -1,0 +1,20 @@
+services:
+  # --- Additional volume server (optional, can be on another node) ---
+  volume2:
+    image: chrislusf/seaweedfs:4.31
+    container_name: seaweed-volume2
+    command: >
+      volume
+      -master=master:9333
+      -ip=volume2
+      -ip.bind=volume2
+      -port=8080
+      -dir=/data
+      -max=2
+    depends_on:
+      master:
+        condition: service_healthy
+    ports:
+      - "8082:8080"
+    volumes:
+      - ./data/volume2:/data
