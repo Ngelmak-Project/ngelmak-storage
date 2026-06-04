@@ -2,9 +2,56 @@
 .vscode/
 
 # Ignore Docker mounted data volumes
-databases/pgdata/
-databases/redisdata/
-seaweed-storage/data/
+databases/pgseaweed-storage/data/
+databases/redisseaweed-storage/data/
 
 # Ignore replication backup documentation
 REPLICATION_BACKUP.md
+
+
+###############################################
+# SeaweedFS Runtime Data (DO NOT COMMIT)
+###############################################
+
+# Master metadata (raft logs, topology, etc.)
+seaweed-storage/data/master/*
+!seaweed-storage/data/master/.gitkeep
+
+# Filer metadata store (leveldb2, filerldb2, etc.)
+seaweed-storage/data/filer/filer_store/*
+seaweed-storage/data/filer/filerldb2/*
+!seaweed-storage/data/filer/filer.toml
+!seaweed-storage/data/filer/.gitkeep
+
+# Volume server data (actual .dat and .idx files)
+seaweed-storage/data/volume*/*
+!seaweed-storage/data/volume*/.gitkeep
+
+###############################################
+# Logs
+###############################################
+*.log
+logs/*
+!logs/.gitkeep
+
+###############################################
+# Docker
+###############################################
+# Local bind mounts
+docker-seaweed-storage/data/*
+!docker-seaweed-storage/data/.gitkeep
+
+# Compose artifacts
+*.pid
+*.seed
+*.tmp
+
+###############################################
+# OS / Editor junk
+###############################################
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+*.swp
+*.swo
