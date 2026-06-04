@@ -27,11 +27,11 @@ services:
   # --- Filer: Write Access ---
   filer:
     image: chrislusf/seaweedfs:4.31
-    container_name: seaweed-filer-write
+    container_name: seaweed-filer
     command: >
       filer
       -master=master:9333
-      -ip=filer-write
+      -ip=filer
       -port=9555
       -defaultReplicaPlacement=000
     depends_on:
@@ -50,7 +50,10 @@ services:
     image: chrislusf/seaweedfs:4.31
     container_name: seaweed-filer-read
     # Key Flags:
-    # -port 8888       : Main port (Read based on filer.toml)
+    # -master=master:9333 : Connect to master for metadata
+    # -peers=filer:9555 : Connect to filer for metadata (can be multiple peers for HA)
+    # -ip=filer-ro : Container's IP (used for internal communication)
+    # -port 9555   : Main port (Read based on filer.toml)
     # -port.readonly 8888 : Public port (Read ONLY, ignores writes)
     # -defaultReplicaPlacement=000 : No replication (for testing, not recommended for production)
     # -disableDirListing=true : Allows directory listing (can be a security risk, set to true in production)
@@ -59,8 +62,9 @@ services:
     command: >
       filer
       -master=master:9333
+      -peers=filer:9555
       -ip=filer-ro
-      -port=8888
+      -port=9555
       -port.readonly=8888
       -disableDirListing=true
       -exposeDirectoryData=false
@@ -71,7 +75,6 @@ services:
     ports:
       - "8888:8888" # For Public (Read Only Access)
     volumes:
-      - ./data/filer_meta:/data/filer_meta # Shares same metadata
       - ./data/config/filer.toml:/etc/seaweedfs/filer.toml:ro
     networks:
       - ngelmak-net
