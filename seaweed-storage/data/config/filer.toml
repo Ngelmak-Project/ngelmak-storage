@@ -1,0 +1,24 @@
+###############################################
+# SeaweedFS Filer Configuration (Default LevelDB2)
+###############################################
+
+[leveldb2]
+# Enabled by default in SeaweedFS, but explicit is clearer.
+# Stores metadata locally on disk.
+enabled = true
+# Path INSIDE the container where LevelDB files are stored.
+# This matches the volume mount in docker-compose.yml.
+dir = "/data/filer_meta"
+
+[http]
+# Disable directory listing for security
+disableDirListing = true
+
+[http.access]
+# Restrict read and write access to only the /public/* path
+read = [
+  "/public/*"
+]
+write = [
+  "/public/*"
+]   

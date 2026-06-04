@@ -34,16 +34,18 @@ services:
       -ip=filer
       -port=8888
       -defaultReplicaPlacement=000
-      -defaultStoreDir=/data/filer_store
-      -disableDirListing
     depends_on:
       master:
         condition: service_healthy
+      volume1:
+        condition: service_started
     ports:
       - "8888:8888"
     volumes:
-      - ./data/filer:/data
-      - ./data/filer/filer.toml:/etc/seaweedfs/filer.toml:ro
+      # Persist LevelDB metadata
+      - ./data/filer_meta:/data/filer_meta
+      # Mount the configuration file
+      - ./data/config/filer.toml:/etc/seaweedfs/filer.toml:ro
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8888/?pretty=y"]
       interval: 10s
