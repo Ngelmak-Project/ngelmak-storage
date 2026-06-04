@@ -1,0 +1,5 @@
+[jwt.filer_signing]
+key = "change-this-to-a-strong-secret-key"
+
+[jwt.filer_signing.read]
+key = "change-this-to-another-strong-secret-key"   

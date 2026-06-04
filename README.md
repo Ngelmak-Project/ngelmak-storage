@@ -78,3 +78,17 @@ SeaweedFS configuration files are located in `seaweed-storage/`.
 - SeaweedFS is used for scalable file storage and object persistence.
 
 For more details, consult the service-specific documentation files in each folder.
+
+
+
+---
+---
+---
+# Create the directory if it doesn't exist
+mkdir -p ./data/filer_meta
+
+# Change ownership to UID 1000 (the standard user inside the SeaweedFS image)
+sudo chown -R 1000:1000 ./data/filer_meta
+
+# Ensure read/write/execute permissions
+chmod -R 755 ./data/filer_meta   

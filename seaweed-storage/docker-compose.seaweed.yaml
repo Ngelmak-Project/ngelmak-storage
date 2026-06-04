@@ -24,34 +24,55 @@ services:
     networks:
       - ngelmak-net
 
-  # --- Filer (HTTP API + POSIX-like paths) ---
+  # --- Filer: Write Access ---
   filer:
     image: chrislusf/seaweedfs:4.31
-    container_name: seaweed-filer
+    container_name: seaweed-filer-write
     command: >
       filer
       -master=master:9333
-      -ip=filer
-      -port=8888
+      -ip=filer-write
+      -port=9555
       -defaultReplicaPlacement=000
     depends_on:
-      master:
-        condition: service_healthy
-      volume1:
-        condition: service_started
+      - master
+      - volume1
     ports:
-      - "8888:8888"
+      - "9555:9555" # Only expose to internal network or localhost
     volumes:
-      # Persist LevelDB metadata
       - ./data/filer_meta:/data/filer_meta
-      # Mount the configuration file
       - ./data/config/filer.toml:/etc/seaweedfs/filer.toml:ro
-    healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8888/?pretty=y"]
-      interval: 10s
-      timeout: 5s
-      retries: 5
-    restart: on-failure:5
+    networks:
+      - ngelmak-net
+
+  # --- PUBLIC: For Consumers (Read Only Access) ---
+  filer-ro:
+    image: chrislusf/seaweedfs:4.31
+    container_name: seaweed-filer-read
+    # Key Flags:
+    # -port 8888       : Main port (Read based on filer.toml)
+    # -port.readonly 8888 : Public port (Read ONLY, ignores writes)
+    # -defaultReplicaPlacement=000 : No replication (for testing, not recommended for production)
+    # -disableDirListing=true : Allows directory listing (can be a security risk, set to true in production)
+    # -exposeDirectoryData=false : Hides folder contents (lists return empty)
+    # -ui.deleteDir=false : Disables delete option in UI (for safety)
+    command: >
+      filer
+      -master=master:9333
+      -ip=filer-ro
+      -port=8888
+      -port.readonly=8888
+      -disableDirListing=true
+      -exposeDirectoryData=false
+      -ui.deleteDir=false
+    depends_on:
+      - master
+      - volume1
+    ports:
+      - "8888:8888" # For Public (Read Only Access)
+    volumes:
+      - ./data/filer_meta:/data/filer_meta # Shares same metadata
+      - ./data/config/filer.toml:/etc/seaweedfs/filer.toml:ro
     networks:
       - ngelmak-net
 
