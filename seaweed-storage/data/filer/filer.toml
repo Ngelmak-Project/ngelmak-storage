@@ -1,7 +1,5 @@
 ###############################################
 # SeaweedFS Filer Security Configuration
-# This file controls access behavior for the
-# HTTP filer API exposed on port 8888.
 ###############################################
 
 [http]
@@ -17,17 +15,15 @@ read = [
 ]
 
 ###############################################
-# Spring Boot writes only to /uploads/*
-# Public cannot write anywhere.
+# Writes allowed only to /public/*
+# (Spring Boot should POST to /public/...)
 ###############################################
 write = [
-  # Example: allow writes only inside /uploads/*
-  # "/uploads/*"
+  "/public/*"
 ]
 
 ###############################################
-# JWT signing (optional)
-# Leave commented if you do not want JWT auth.
+# JWT signing (optional, using defaults = disabled)
 ###############################################
 # [jwt.signing]
 # filer_signing_key = "change-me"
