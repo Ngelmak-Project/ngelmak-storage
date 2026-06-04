@@ -72,6 +72,7 @@ services:
     depends_on:
       - master
       - volume1
+      - filer
     ports:
       - "8888:8888" # For Public (Read Only Access)
     volumes:
