@@ -1,110 +1,76 @@
-# 🎯 SeaweedFS Cluster (Master + Filer + Volume Servers)
-
-A **high‑performance, distributed object storage system** built with **SeaweedFS**, optimized for storing large numbers of small to medium files with minimal overhead.
-
-## 🤔 Why SeaweedFS?
-
-- **Horizontal scalability**: Add volume servers without cluster downtime
-- **Efficient small-file storage**: Optimized for millions of files (photos, documents, metadata)
-- **POSIX-compatible API**: Familiar directory structure and HTTP endpoints
-- **Low operational overhead**: Simple topology management and automatic volume allocation
-- **Flexible replication**: Control redundancy at cluster or per-file level
+# 📦 SeaweedFS File Storage Architecture  
+A practical deployment of SeaweedFS used as a **file saver** with strict separation between **internal write access** and **public read‑only access**.
 
 ---
 
-## 📚 Theoretical Foundation
+## Preparing Storage Directory
 
-SeaweedFS implements a **master-slave distributed architecture** with the following key concepts:
-
-### 🔹 Volume-Based Storage Model
-
-Unlike traditional distributed filesystems (HDFS, CephFS) that stripe data across nodes, SeaweedFS uses **volumes** as atomic storage units:
-
-- Each **volume** is a fixed-size file (typically 1–30 GB) containing serialized file metadata and content
-- Volumes are immutable once closed, enabling efficient sequential I/O and replication
-- The **master** tracks volume-to-node mappings; the **filer** translates hierarchical paths to volume locations
-
-**Benefit**: Minimal metadata overhead; efficient for write-once/append-rarely workloads.
-
-### 🔹 Two-Tier Metadata Management
-
-1. **Master tier**: Cluster topology, volume assignments, rack/DC awareness (in-memory + persistent log)
-2. **Filer tier**: Directory hierarchy, file-to-volume mappings (LevelDB/relational backend)
-
-This decoupling allows independent scaling of storage and namespace layers.
-
-### 🔹 Placement Rules & Replication
-
-Replication placement is controlled by a **three-digit rule** `XYZ`:
-- **X**: Extra replicas in the same rack
-- **Y**: Extra replicas in the same data center
-- **Z**: Extra replicas in different data centers
-
-Example: `101` = 1 copy locally, 1 copy elsewhere in DC, 1 copy in different DC (3 replicas total).
+```bash
+mkdir data
+sudo chown -R 1000:1000 data
+sudo chmod -R 755 data
+```
 
 ---
 
-## 🏗️ Architecture
+## 🧩 Architecture Overview
+
+| Component | Port | Access | Purpose |
+|----------|------|--------|---------|
+| **Master** | 9333 | Internal | Coordinates volumes & metadata |
+| **Filer (Write)** | 9555 | Internal | Handles uploads & metadata writes |
+| **Filer (Read‑Only)** | 8888 | Public | Safe public download endpoint |
+| **Volume Servers** | 8081 / 8082 | Internal | Store actual file data |
+
+## Quick Reference: Curl Commands
+
+| Operation | Port | Command | Status |
+|-----------|------|---------|--------|
+| **Upload** | 9555 | `curl -F "file=@path/file"` | ✅ Works |
+| **Download** | 9555 | `curl http://localhost:9555/public/file` | ✅ Works |
+| **Download (Public)** | 8888 | `curl http://localhost:8888/public/file` | ✅ Works |
+| **Upload (Public)** | 8888 | `curl -F "file=@path/file"` | ❌ 405 Denied |
+
+---
+
+## 🖼️ Architecture Diagram
 
 ```
 ┌──────────────────┐
-│   Master Server  │◄─ Cluster topology, volume mapping, rack awareness
+│   Master Server  │ Cluster topology, volume mapping, rack awareness
 └────────┬─────────┘
          │
     ┌────┴─────────┐
     │              │
     ▼              ▼
 ┌───────┐      ┌───────┐
-│ Filer │      │ Filer │  ◄─ POSIX API, HTTP endpoints, hierarchy
+│ Filer │      │ Filer │ POSIX API, HTTP endpoints, hierarchy
 └───┬───┘      └──┬────┘
     │             │
     ├──────┬──────┼──────┐
     │      │      │      │
     ▼      ▼      ▼      ▼
   ┌────┐ ┌────┐ ┌────┐ ┌────┐
-  │ V1 │ │ V2 │ │ V3 │ │ V4 │  ◄─ Volume servers (one per disk/storage)
+  │ V1 │ │ V2 │ │ V3 │ │ V4 │ Volume servers (one per disk/storage)
   └────┘ └────┘ └────┘ └────┘
     │      │      │      │
   Disk1  Disk2  Disk3  Disk4
 ```
-
 **Key principle**: Each volume server is **bound to one storage device**. Multiple disks require multiple volume server instances.
 
----
-
-## ⚡ Quick Start
-
-### 🖥️ Server 1 (Master + Filer)
-
-```bash
-docker compose -f docker-compose.master-filer.yml up -d
-```
-
-### 🖥️ Server 2+ (Volume Servers)
-
-```bash
-docker compose -f docker-compose.volume.yml up -d
-```
-
-Then verify:
-
-```bash
-docker exec seaweed-filer weed shell
-> volume.list
-> master.volumeStats
-```
 
 ---
 
-## ⚙️ Services Configuration
+## 🐳 Docker Compose Setup  
 
-### 🟦 Master Server
+---
 
-Manages **cluster topology**, **volume allocation**, and **replication state**.
+### 🟦 Master Server (9333)
 
 ```yaml
 master:
   image: chrislusf/seaweedfs:4.31
+  user: seaweed
   container_name: seaweed-master
   command: >
     master
@@ -124,7 +90,11 @@ master:
     timeout: 5s
     retries: 5
   restart: on-failure:5
+  networks:
+    - ngelmak-net
 ```
+
+#### Key parameters
 
 | Parameter | Purpose | Default |
 |-----------|---------|---------|
@@ -137,55 +107,112 @@ master:
 
 ---
 
-### 🟩 Filer Server
+### 🟩 Filer — Write Access (9555)
 
 Exposes a **POSIX-like API** (directory structure) and **HTTP endpoints** for file operations.
 
 ```yaml
 filer:
   image: chrislusf/seaweedfs:4.31
+  user: seaweed
   container_name: seaweed-filer
   command: >
     filer
     -master=master:9333
     -ip=filer
-    -port=8888
+    -port=9555
     -defaultReplicaPlacement=000
-    -defaultStoreDir=/data/filer_store
   depends_on:
-    master:
-      condition: service_healthy
+    - master
+    - volume1
   ports:
-    - "8888:8888"
+    - "9555:9555"
   volumes:
-    - ./data/filer:/data
-  healthcheck:
-    test: ["CMD", "curl", "-f", "http://localhost:8888/?pretty=y"]
-    interval: 10s
-    timeout: 5s
-    retries: 5
-  restart: on-failure:5
+    - ./data/filer_meta:/data/filer_meta
+    - ./data/config/filer.toml:/etc/seaweedfs/filer.toml:ro
+  networks:
+    - ngelmak-net
 ```
 
+#### Key parameters  
 | Parameter | Purpose | Default |
 |-----------|---------|---------|
 | `-master=master:9333` | Master server endpoint | — |
 | `-ip=filer` | Service hostname (Docker network) | — |
-| `-port=8888` | HTTP API port | `8888` |
+| `-port=9555` | HTTP API port | `9555` |
 | `-defaultReplicaPlacement=000` | Replica distribution rule | `000` |
-| `-defaultStoreDir=/data/filer_store` | Metadata storage (LevelDB) | `./filer_store` |
 
 **Metadata backends**: Default is LevelDB; can swap for MySQL, PostgreSQL, or Redis via `-metaFolder` configuration.
 
+#### Filer Configuration (`filer.toml`)
+
+```toml
+[leveldb2]
+enabled = true
+dir = "/data/filer_meta"
+
+[http]
+disableDirListing = true
+
+[http.access]
+read = ["/public/*"]
+write = ["/public/*"]
+```
+
+This file **overrides** CLI flags and ensures:  
+- Only `/public/*` is accessible  
+- Directory listing is disabled  
+- Metadata stored in `/data/filer_meta`  
+
+
 ---
 
-### 🟧 Volume Servers
+### 🟧 Filer — Read‑Only (8888)
+
+```yaml
+filer-ro:
+  image: chrislusf/seaweedfs:4.31
+  user: seaweed
+  container_name: seaweed-filer-read
+  command: >
+    filer
+    -master=master:9333
+    -ip=filer-ro
+    -port=9555
+    -port.readonly=8888
+    -disableDirListing=true
+    -exposeDirectoryData=false
+    -ui.deleteDir=false
+  depends_on:
+    - master
+    - volume1
+    - filer
+  ports:
+    - "8888:8888"
+  volumes:
+    - ./data/config/filer.toml:/etc/seaweedfs/filer.toml:ro
+  networks:
+    - ngelmak-net
+```
+
+#### Key parameters  
+| Parameter | Purpose | Default |
+|-----------|---------|---------|
+| `-port.readonly=8888` | Public read-only HTTP endpoint (separate from main filer port) | `8888` |
+| `-disableDirListing=true` | Disables directory browsing; clients cannot list folder contents | `false` |
+| `-exposeDirectoryData=false` | Hides folder structure from API responses; restricts metadata exposure | `true` |
+| `-ui.deleteDir=false` | Disables folder deletion via web UI; prevents accidental recursive deletes | `true` |
+
+---
+
+### 🟫 Volume Server 1 (8081)
 
 **Store actual file data**. One container per physical disk or storage device.
 
 ```yaml
 volume1:
   image: chrislusf/seaweedfs:4.31
+  user: seaweed
   container_name: seaweed-volume1
   command: >
     volume
@@ -202,8 +229,11 @@ volume1:
     - "8081:8080"
   volumes:
     - ./data/volume1:/data
+  networks:
+    - ngelmak-net
 ```
 
+#### Key parameters  
 | Parameter | Purpose | Default |
 |-----------|---------|---------|
 | `-master=master:9333` | Master server endpoint | — |
@@ -217,184 +247,49 @@ volume1:
 
 ---
 
-## 📦 Deployment for Multiple Servers
-
-### 🖥️ **Server 1** (`docker-compose.master-filer.yml`)
-
-Contains master and filer services only.
+### 🟫 Volume Server 2 (8082)
 
 ```yaml
-version: "3.9"
-
-services:
-  master:
-    image: chrislusf/seaweedfs:4.31
-    container_name: seaweed-master
-    command: >
-      master
-      -ip=0.0.0.0
-      -port=9333
-      -mdir=/data
-      -peers=none
-      -defaultReplication=000
-      -volumeSizeLimitMB=1024
-    ports:
-      - "9333:9333"
-    volumes:
-      - ./data/master:/data
-    healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:9333/cluster/status"]
-      interval: 10s
-      timeout: 5s
-      retries: 5
-    restart: on-failure:5
-
-  filer:
-    image: chrislusf/seaweedfs:4.31
-    container_name: seaweed-filer
-    command: >
-      filer
-      -master=master:9333
-      -ip=0.0.0.0
-      -port=8888
-      -defaultReplicaPlacement=000
-      -defaultStoreDir=/data/filer_store
-    depends_on:
-      master:
-        condition: service_healthy
-    ports:
-      - "8888:8888"
-    volumes:
-      - ./data/filer:/data
-    healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8888/?pretty=y"]
-      interval: 10s
-      timeout: 5s
-      retries: 5
-    restart: on-failure:5
-```
-
-**Start**:
-```bash
-docker compose -f docker-compose.master-filer.yml up -d
-```
-
----
-
-### 🖥️ **Server 2+** (`docker-compose.volume.yml`)
-
-Contains volume servers. Deploy on each storage node.
-
-```yaml
-version: "3.9"
-
-services:
-  volume1:
-    image: chrislusf/seaweedfs:4.31
-    container_name: seaweed-volume1
-    command: >
-      volume
-      -master=<MASTER_IP>:9333
-      -ip=0.0.0.0
-      -port=8080
-      -dir=/data
-      -max=2
-      -rack=rack1
-    ports:
-      - "8081:8080"
-    volumes:
-      - ./data/volume1:/data
-    restart: on-failure:5
-
-  volume2:
-    image: chrislusf/seaweedfs:4.31
-    container_name: seaweed-volume2
-    command: >
-      volume
-      -master=<MASTER_IP>:9333
-      -ip=0.0.0.0
-      -port=8080
-      -dir=/data2
-      -max=2
-      -rack=rack1
-    ports:
-      - "8082:8080"
-    volumes:
-      - ./data/volume2:/data2
-    restart: on-failure:5
-```
-
-Replace `<MASTER_IP>` with the actual IP or hostname of Server 1.
-
-**Start**:
-```bash
-docker compose -f docker-compose.volume.yml up -d
-```
-
----
-
-## 📈 Scaling: Add More Volume Servers
-
-On **Server 3, 4, 5...**, modify `docker-compose.volume.yml` with unique container names and ports:
-
-```yaml
-volume3:
+volume2:
   image: chrislusf/seaweedfs:4.31
-  container_name: seaweed-volume3
+  user: seaweed
+  container_name: seaweed-volume2
   command: >
     volume
-    -master=<MASTER_IP>:9333
-    -ip=0.0.0.0
+    -master=master:9333
+    -ip=volume2
+    -ip.bind=volume2
     -port=8080
     -dir=/data
     -max=2
-    -rack=rack2
+  depends_on:
+    master:
+      condition: service_healthy
   ports:
-    - "8083:8080"
+    - "8082:8080"
   volumes:
-    - ./data/volume3:/data
-  restart: on-failure:5
+    - ./data/volume2:/data
+  networks:
+    - ngelmak-net
 ```
 
-The master **automatically detects** new volume servers and begins allocating volumes.
 
 ---
 
-## 💾 Storage Design Deep Dive
+## 🔍 Start Verification & Monitoring
 
-### Volume Lifecycle
 
-A **volume** is a write-once, immutable container:
+### 🖥️ Server 1 (Master + 2x Filer + Volume)
 
-1. **Creation**: Master allocates volume ID when first file is written
-2. **Growth**: Files accumulate until volume reaches `-volumeSizeLimitMB` limit
-3. **Closure**: Automatically closed; no new writes allowed
-4. **Replication**: Closed volumes are replicated per placement rule
+```bash
+docker compose -f docker-compose.seaweed.yml up -d
+```
 
-**Example** with `-volumeSizeLimitMB=1024` and `-max=2`:
+### 🖥️ Server 2+ (Volume Servers)
 
-| State | Volume 1 | Volume 2 | Volume 3 |
-|-------|----------|----------|----------|
-| Growing | 0–1 GB | — | — |
-| Growing | 1 GB (closed) | 0–500 MB | — |
-| Growing | 1 GB (closed) | 1 GB (closed) | — |
-| **Blocked** | 1 GB (closed) | 1 GB (closed) | *Cannot create (max=2)* |
-
-When volume capacity is exhausted, uploads fail unless:
-- `-max` is increased
-- Old volumes are deleted or archived
-- New volume servers are added
-
-### Replication Guarantees
-
-With `defaultReplication=001`:
-- Each file has **2 copies minimum** (original + 1 cross-datacenter)
-- If a volume server fails, master redirects reads to replicas
-- Replication is **automatic and asynchronous** after volume closure
-
----
-
-## 🔍 Verification & Monitoring
+```bash
+docker compose -f docker-compose.volume2.yml up -d
+```
 
 ### 📊 Check cluster health
 
@@ -416,41 +311,73 @@ docker exec seaweed-filer weed shell
 
 | Endpoint | Method | Purpose |
 |----------|--------|---------|
-| `http://filer:8888/?pretty=y` | GET | Health check & cluster info |
+| `http://filer:9555/?pretty=y` | GET | Health check & cluster info |
 | `http://filer:8888/path/to/file` | GET | Retrieve file |
-| `http://filer:8888/path/to/file` | PUT | Upload file |
-| `http://filer:8888/path/to/file` | DELETE | Delete file |
-| `http://filer:8888/admin/dir/status?path=/uploads` | GET | Directory statistics |
+| `http://filer:9555/path/to/file` | PUT | Upload file |
+| `http://filer:9555/path/to/file` | DELETE | Delete file |
+| `http://filer:9555/admin/dir/status?path=/uploads` | GET | Directory statistics |
 
-### 📈 Prometheus metrics
 
-Master exposes metrics on port `9333`:
+---
+
+## 🧪 Curl Testing (With Expected Responses)
+
+---
+
+### Upload (Write Port 9555)
+
 ```bash
-curl http://<MASTER_IP>:9333/metrics
+curl -i -F "file=@examples/image1.jpg" \
+  "http://localhost:9555/public/image1.jpg"
+```
+
+**Expected response:**
+
+```
+HTTP/1.1 201 Created
+Content-Md5: <checksum>
+{"name":"image1.jpg","size":3135682}
 ```
 
 ---
 
-## 🏭 Production Considerations
+### Download (Public Read‑Only Port 8888)
 
-| Aspect | Recommendation |
-|--------|-----------------|
-| **Replication** | Set `-defaultReplication` to `001` or higher; geo-distribute volume servers |
-| **Volume limits** | Monitor `-max` values; alert before exhaustion |
-| **Metadata backup** | Persist master and filer data to reliable storage (NAS, object store) |
-| **Multi-master HA** | Use `-peers` for master clustering; configure load balancer for filers |
-| **Network isolation** | Use overlay networks (Swarm/K8s) or secure VPNs between nodes |
-| **Port exposure** | Place filer behind reverse proxy (nginx/HAProxy); restrict master access |
-| **Monitoring** | Export metrics to Prometheus; alert on volume fullness, server down, replication lag |
+```bash
+curl -o image1.jpg "http://localhost:8888/public/image1.jpg"
+```
+
+**Expected response:**
+
+```
+100 3135k  100 3135k    0     0  12.5M      0 --:-- --:-- --:-- 12.5M
+```
 
 ---
 
-## 🎛️ Configuration Reference
+### Upload to Read‑Only Port (Should Fail)
 
-| Component | Key Customizations |
-|-----------|-------------------|
-| **Master** | replication policy (`-defaultReplication`), volume size (`-volumeSizeLimitMB`), RPC port, metadata directory, multi-master peers |
-| **Filer** | replica placement (`-defaultReplicaPlacement`), HTTP port, metadata backend (LevelDB/MySQL/Postgres/Redis) |
-| **Volume** | disk path (`-dir`), max volumes (`-max`), RPC port, rack/datacenter labels (`-rack`, `-dataCenter`) |
+```bash
+curl -i -F "file=@examples/image2.jpg" \
+  "http://localhost:8888/public/image2.jpg"
+```
 
-Modify these values in the compose file `command` sections **before deployment**. Changes to running services require restart.
+**Expected response:**
+
+```
+HTTP/1.1 405 Method Not Allowed
+Content-Length: 0
+```
+
+---
+
+## 🛡️ Security Practices
+
+| Practice | Status |
+|---------|--------|
+| Separate read/write ports | ✔️ |
+| Only expose read‑only port | ✔️ |
+| Directory listing disabled | ✔️ |
+| Folder structure hidden | ✔️ |
+| UI delete disabled | ✔️ |
+| Internal Docker network | ✔️ |

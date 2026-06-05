@@ -1,6 +1,6 @@
-###############################################
-# SeaweedFS Filer Configuration (Default LevelDB2)
-###############################################
+####################################################
+# SeaweedFS Filer Configuration (Default LevelDB2) #
+####################################################
 
 [leveldb2]
 # Enabled by default in SeaweedFS, but explicit is clearer.
@@ -9,6 +9,20 @@ enabled = true
 # Path INSIDE the container where LevelDB files are stored.
 # This matches the volume mount in docker-compose.yml.
 dir = "/data/filer_meta"
+
+# [postgres2]
+# # PostgreSQL Metadata Backend
+# enabled = true
+# hostname = "postgres"
+# port = 5432
+# username = "seaweed"
+# password = "seaweed_secure_password"
+# database = "seaweedfs"
+# schema = "seaweedfs"
+# sslmode = "disable"
+# max_idle_connections = 10
+# max_open_connections = 100
+# conn_max_lifetime = 0
 
 [http]
 # Disable directory listing for security
@@ -21,4 +35,18 @@ read = [
 ]
 write = [
   "/public/*"
-]   
+]
+
+[filer.options]
+# Directory listing options
+recursive_delete = true
+buckets_folder = "/buckets"
+
+[filer.security]
+# JWT token signing (optional)
+sign_uploads = false
+
+[filer.jwt]
+# JWT signing key for securing API calls
+# signing_key = "your-secret-key-here"
+# signing_key_hex = ""

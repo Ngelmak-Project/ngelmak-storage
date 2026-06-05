@@ -2,6 +2,7 @@ services:
   # --- SeaweedFS master ---
   master:
     image: chrislusf/seaweedfs:4.31
+    user: seaweed
     container_name: seaweed-master
     command: >
       master
@@ -27,7 +28,10 @@ services:
   # --- Filer: Write Access ---
   filer:
     image: chrislusf/seaweedfs:4.31
+    user: seaweed
     container_name: seaweed-filer
+    # Key Flags:
+    # -defaultReplicaPlacement=000 : No replication (for testing, not recommended for production)
     command: >
       filer
       -master=master:9333
@@ -48,21 +52,16 @@ services:
   # --- PUBLIC: For Consumers (Read Only Access) ---
   filer-ro:
     image: chrislusf/seaweedfs:4.31
+    user: seaweed
     container_name: seaweed-filer-read
     # Key Flags:
-    # -master=master:9333 : Connect to master for metadata
-    # -peers=filer:9555 : Connect to filer for metadata (can be multiple peers for HA)
-    # -ip=filer-ro : Container's IP (used for internal communication)
-    # -port 9555   : Main port (Read based on filer.toml)
     # -port.readonly 8888 : Public port (Read ONLY, ignores writes)
-    # -defaultReplicaPlacement=000 : No replication (for testing, not recommended for production)
     # -disableDirListing=true : Allows directory listing (can be a security risk, set to true in production)
     # -exposeDirectoryData=false : Hides folder contents (lists return empty)
     # -ui.deleteDir=false : Disables delete option in UI (for safety)
     command: >
       filer
       -master=master:9333
-      -peers=filer:9555
       -ip=filer-ro
       -port=9555
       -port.readonly=8888
@@ -83,6 +82,7 @@ services:
   # --- Volume servers (can be spread across nodes) ---
   volume1:
     image: chrislusf/seaweedfs:4.31
+    user: seaweed
     container_name: seaweed-volume1
     command: >
       volume
