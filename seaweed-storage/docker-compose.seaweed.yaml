@@ -46,6 +46,7 @@ services:
     volumes:
       - ./data/filer_meta:/data/filer_meta
       - ./data/config/filer.toml:/etc/seaweedfs/filer.toml:ro
+    restart: on-failure:5
     networks:
       - ngelmak-net
 
@@ -76,6 +77,7 @@ services:
       - "8888:8888" # For Public (Read Only Access)
     volumes:
       - ./data/config/filer.toml:/etc/seaweedfs/filer.toml:ro
+    restart: on-failure:5
     networks:
       - ngelmak-net
 
@@ -99,6 +101,7 @@ services:
       - "8081:8080"
     volumes:
       - ./data/volume1:/data
+    restart: on-failure:5
     networks:
       - ngelmak-net
 

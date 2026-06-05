@@ -16,5 +16,6 @@ services:
         condition: service_healthy
     ports:
       - "8082:8080"
+    restart: on-failure:5
     volumes:
       - ./data/volume2:/data
