@@ -1,7 +1,9 @@
+version: '3.8'
+
 services:
   # --- Postgres Database ---
   ngelmak-pgdb:
-    image: postgres:16
+    image: postgres:16-alpine
     container_name: ngelmak-pgdb
     environment:
       POSTGRES_USER: admin
